@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#12121f">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Fill More! 2P</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #12121f;
+  font-family: 'Nunito', sans-serif;
+  color: #fff;
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+  margin: 0; padding: 0;
+}
+
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse at 10% 10%, rgba(0,180,255,.12) 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 90%, rgba(255,80,120,.12) 0%, transparent 55%);
+}
+
+/* ── SCREENS ── */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; transition: opacity .3s, transform .3s; z-index: 1;
+  overflow: hidden;
+}
+.screen.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(.97);
+  visibility: hidden;
+}
+
+/* ── MENU ── */
+#menu { justify-content: center; gap: 22px; }
+.logo { font-size: 3rem; font-weight: 900; letter-spacing: -1px; }
+.logo em { font-style: normal; color: #ffcc00; }
+.logo-sub { font-size: .85rem; font-weight: 700; letter-spacing: 4px; text-transform: uppercase; color: rgba(255,255,255,.35); }
+.btn {
+  font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem;
+  padding: 13px 36px; border-radius: 50px; border: none; cursor: pointer;
+  transition: transform .12s, box-shadow .12s; outline: none;
+}
+.btn:active { transform: scale(.93); }
+.btn-gold { background: linear-gradient(135deg,#ffcc00,#ff8800); color: #12121f; box-shadow: 0 4px 20px rgba(255,170,0,.4); }
+.btn-gold:hover { box-shadow: 0 6px 28px rgba(255,170,0,.6); transform: translateY(-2px); }
+.btn-ghost { background: rgba(255,255,255,.09); color: #fff; border: 1.5px solid rgba(255,255,255,.18); }
+.btn-icon { width: 40px; height: 40px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 1rem; border-radius: 11px; }
+.menu-col { display: flex; flex-direction: column; gap: 12px; align-items: center; }
+
+/* ══════════════════════════════
+   GAME SCREEN  – 5-zone layout
+   [P2 palette – rotated 180°]
+   [P2 HUD strip]
+   [canvas]
+   [P1 HUD strip]
+   [P1 palette]
+══════════════════════════════ */
+#game {
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+/* HUD STRIP */
+.hud-strip {
+  width: 100%; display: flex; align-items: center; gap: 0; flex-shrink: 0;
+  background: rgba(0,0,0,.5); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.hud-strip.p1-strip { border-top: 2px solid var(--p1c,#38bdf8); }
+.hud-strip.p2-strip { border-bottom: 2px solid var(--p2c,#f472b6); transform: rotate(180deg); }
+
+.hud-player {
+  flex: 1; display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+}
+.hud-dot {
+  width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+}
+.hud-name { font-size: .8rem; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+.hud-score { font-size: 1.3rem; font-weight: 900; margin-left: auto; }
+.hud-turn-badge {
+  font-size: .65rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 20px; margin-left: 6px;
+  background: rgba(255,255,255,.15); color: rgba(255,255,255,.5);
+  transition: background .3s, color .3s;
+}
+.hud-turn-badge.active { background: rgba(255,255,255,.9); color: #12121f; }
+
+.hud-center-strip {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 16px;
+  padding: 5px 12px; flex-shrink: 0;
+  background: rgba(0,0,0,.35);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+.moves-label { font-size: .6rem; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,.35); font-weight: 700; }
+.moves-val { font-size: 1.2rem; font-weight: 900; }
+.moves-val.low { color: #ff4444; animation: blink .55s infinite alternate; }
+@keyframes blink { to { opacity: .4; } }
+
+/* PROGRESS BAR (split) */
+.progress-wrap {
+  width: 100%; height: 8px; flex-shrink: 0; display: flex;
+  background: rgba(255,255,255,.06);
+}
+.progress-p1 { height: 100%; background: var(--p1c,#38bdf8); transition: width .35s ease; }
+.progress-p2 { height: 100%; background: var(--p2c,#f472b6); transition: width .35s ease; margin-left: auto; }
+
+/* CANVAS */
+.canvas-wrap {
+  flex: 1;
+  min-height: 0;        /* critical: allows flex child to shrink below content size on iOS */
+  width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  transition: background 0.6s ease;
+}
+canvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+canvas.mirrored { transform: scaleY(-1); }
+
+/* PALETTE PANEL */
+.palette-panel {
+  width: 100%; padding: 5px 8px 7px;
+  display: flex; gap: 5px; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  flex-shrink: 0; position: relative;
+  transition: opacity .3s;
+}
+.palette-panel.p2-panel {
+  transform: rotate(180deg);
+  border-bottom: 2px solid var(--p2c,#f472b6);
+  padding-bottom: max(7px, env(safe-area-inset-top));
+}
+.palette-panel.p1-panel {
+  border-top: 2px solid var(--p1c,#38bdf8);
+  padding-bottom: max(7px, env(safe-area-inset-bottom));
+}
+.palette-panel.dimmed { opacity: .25; pointer-events: none; }
+
+.color-btn {
+  flex: 1; max-width: 36px; aspect-ratio: 1; border-radius: 8px;
+  border: 2px solid transparent; cursor: pointer;
+  transition: transform .12s, box-shadow .12s, border-color .15s, opacity .2s;
+  position: relative; overflow: hidden;
+}
+.color-btn::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(135deg,rgba(255,255,255,.22) 0%,transparent 55%);
+  border-radius: 8px; pointer-events: none;
+}
+.color-btn:active { transform: scale(.85); }
+.color-btn.cur-color {
+  opacity: .3; cursor: default; pointer-events: none;
+  border-color: rgba(255,255,255,.2);
+}
+.color-btn.enemy-color {
+  opacity: .28; cursor: default; pointer-events: none;
+}
+.color-btn.selectable:hover { transform: scale(1.08) translateY(-3px); box-shadow: 0 6px 18px rgba(0,0,0,.5); }
+
+/* TURN OVERLAY (brief flash between turns) */
+#turnOverlay {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none; opacity: 0;
+  transition: opacity .2s;
+}
+#turnOverlay.show { opacity: 1; pointer-events: all; }
+.turn-card {
+  padding: 18px 36px; border-radius: 22px;
+  font-size: 1.4rem; font-weight: 900; letter-spacing: 1px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(255,255,255,.2);
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  animation: cardBounce .35s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes cardBounce { from{transform:scale(.7);opacity:0} to{transform:scale(1);opacity:1} }
+
+/* MODAL */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+  transition: opacity .3s;
+}
+.modal-overlay.hidden { opacity: 0; pointer-events: none; }
+.modal {
+  background: linear-gradient(155deg,#1d2b45,#151e30);
+  border: 1.5px solid rgba(255,255,255,.14); border-radius: 26px;
+  padding: 28px 24px; max-width: 310px; width: 92%;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.7);
+  animation: pop .3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes pop { from{transform:scale(.75);opacity:0} to{transform:scale(1);opacity:1} }
+.modal-title { font-size: 1.8rem; font-weight: 900; text-align: center; }
+.modal-result { font-size: 1rem; color: rgba(255,255,255,.55); text-align: center; line-height: 1.6; }
+.modal-scores { display: flex; gap: 16px; }
+.modal-score-block { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.modal-score-pct { font-size: 2rem; font-weight: 900; }
+.modal-score-name { font-size: .7rem; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; opacity: .5; }
+.modal-btns { display: flex; gap: 10px; width: 100%; }
+.modal-btns .btn { flex: 1; }
+
+
+/* ── ONLINE SCREEN ── */
+#online { justify-content: center; gap: 18px; padding: 24px; }
+.online-title { font-size: 1.4rem; font-weight: 900; text-align: center; }
+.online-sub { font-size: .85rem; color: rgba(255,255,255,.4); text-align: center; }
+.code-display {
+  font-size: 3rem; font-weight: 900; letter-spacing: 10px;
+  color: #ffcc00; text-align: center;
+  background: rgba(255,204,0,.08); border: 2px solid rgba(255,204,0,.25);
+  border-radius: 18px; padding: 16px 28px;
+}
+.code-input {
+  font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1.8rem;
+  letter-spacing: 8px; text-align: center; text-transform: uppercase;
+  background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.2);
+  border-radius: 14px; color: #fff; padding: 12px 20px; width: 100%;
+  max-width: 260px; outline: none;
+}
+.code-input:focus { border-color: rgba(255,204,0,.6); }
+.online-divider { color: rgba(255,255,255,.2); font-size: .8rem; letter-spacing: 3px; }
+.status-msg {
+  font-size: .9rem; font-weight: 700; color: var(--teal, #2ddab0);
+  text-align: center; min-height: 1.2em;
+}
+.status-msg.err { color: #ff4444; }
+
+
+/* ── MOVES SELECTOR ── */
+.moves-selector {
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+}
+.moves-opt {
+  font-family: 'Nunito', sans-serif; font-weight: 800; font-size: .85rem;
+  padding: 7px 14px; border-radius: 30px; border: 2px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.07); color: rgba(255,255,255,.6);
+  cursor: pointer; transition: all .15s;
+}
+.moves-opt.active {
+  background: rgba(255,204,0,.15); border-color: #ffcc00; color: #ffcc00;
+}
+
+/* ── BOT DIFFICULTY ── */
+.diff-selector { display: flex; gap: 8px; justify-content: center; }
+.diff-opt {
+  font-family: 'Nunito', sans-serif; font-weight: 800; font-size: .8rem;
+  padding: 7px 14px; border-radius: 30px; border: 2px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.07); color: rgba(255,255,255,.6);
+  cursor: pointer; transition: all .15s;
+}
+.diff-opt.active { border-color: var(--p2c,#f472b6); color: var(--p2c,#f472b6); background: rgba(244,114,182,.12); }
+
+/* LEVEL SELECT */
+#levelSelect { padding: 18px; gap: 18px; overflow-y: auto; }
+.screen-title { font-size: 1.5rem; font-weight: 900; }
+.levels-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; width: 100%; max-width: 380px; }
+.lbtn {
+  aspect-ratio: 1; border-radius: 14px; background: rgba(255,255,255,.07);
+  border: 2px solid rgba(255,255,255,.1);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; font-size: 1.1rem; font-weight: 900; cursor: pointer; transition: transform .12s;
+}
+.lbtn.done { border-color: rgba(255,204,0,.45); background: rgba(255,204,0,.07); }
+.lbtn.locked { opacity: .32; cursor: default; }
+.lbtn:not(.locked):hover { transform: scale(1.06); }
+.lbtn .lstars { font-size: .58rem; }
+</style>
+</head>
+<body>
+
+<!-- ═══ MENU ═══ -->
+<div id="menu" class="screen">
+  <div class="logo"><em>Fill</em> More!</div>
+  <div class="logo-sub">2 Players · Flood Duel</div>
+  <div class="menu-col">
+    <button class="btn btn-gold" id="btnPlay2p">⚔️ 2 Player Duel</button>
+    <button class="btn btn-ghost" id="btnPlayEndless">♾️ Без лимита ходов</button>
+    <button class="btn btn-ghost" id="btnOnline">🌐 Играть онлайн</button>
+    <button class="btn btn-ghost" id="btnLevels">Level Select</button>
+  </div>
+</div>
+
+
+<!-- ═══ ONLINE ═══ -->
+<div id="online" class="screen hidden">
+  <button class="btn btn-ghost btn-icon" id="onlineBack" style="align-self:flex-start">←</button>
+  <div class="online-title">🌐 Онлайн игра</div>
+
+  <!-- CREATE -->
+  <div id="onlineCreate" style="display:flex;flex-direction:column;align-items:center;gap:12px;width:100%">
+    <div class="online-sub">Создай комнату и дай другу код</div>
+    <div class="online-sub" style="color:rgba(255,255,255,.55)">Макс. ходов:</div>
+    <div class="moves-selector" id="movesSelector">
+      <div class="moves-opt" data-moves="30">30</div>
+      <div class="moves-opt active" data-moves="50">50</div>
+      <div class="moves-opt" data-moves="100">100</div>
+      <div class="moves-opt" data-moves="0">∞</div>
+    </div>
+    <button class="btn btn-gold" id="btnCreateRoom">Создать комнату</button>
+    <div class="code-display hidden" id="roomCodeDisplay">----</div>
+    <div class="status-msg" id="createStatus"></div>
+  </div>
+
+  <div class="online-divider">── или ──</div>
+
+  <!-- JOIN -->
+  <div id="onlineJoin" style="display:flex;flex-direction:column;align-items:center;gap:12px;width:100%">
+    <div class="online-sub">Введи код комнаты друга</div>
+    <input class="code-input" id="codeInput" maxlength="4" placeholder="XXXX" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="btn btn-ghost" id="btnJoinRoom">Войти в комнату</button>
+    <div class="status-msg" id="joinStatus"></div>
+  </div>
+</div>
+
+<!-- ═══ LEVEL SELECT ═══ -->
+<div id="levelSelect" class="screen hidden">
+  <button class="btn btn-ghost btn-icon" id="lsBack" style="align-self:flex-start">←</button>
+  <div class="screen-title">Выбор уровня</div>
+  <div style="display:flex;gap:10px;width:100%;max-width:380px">
+    <button class="btn btn-ghost" id="lsModeLocal" style="flex:1;font-size:.85rem;padding:10px 6px;border-radius:14px;border:2px solid rgba(56,189,248,.5);color:#38bdf8">⚔️ 2 игрока</button>
+    <button class="btn btn-ghost" id="lsModeBot"   style="flex:1;font-size:.85rem;padding:10px 6px;border-radius:14px">🤖 vs Бот</button>
+  </div>
+  <div class="diff-selector" id="diffSelector" style="display:none">
+    <div class="diff-opt" data-diff="easy">😊 Легко</div>
+    <div class="diff-opt active" data-diff="medium">😐 Средне</div>
+    <div class="diff-opt" data-diff="hard">😈 Сложно</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:100%;max-width:380px">
+    <div class="online-sub" style="color:rgba(255,255,255,.45);font-size:.75rem;letter-spacing:2px;text-transform:uppercase">Макс. ходов</div>
+    <div class="moves-selector" id="lsMovesSelector">
+      <div class="moves-opt" data-lsmoves="30">30</div>
+      <div class="moves-opt active" data-lsmoves="50">50</div>
+      <div class="moves-opt" data-lsmoves="100">100</div>
+      <div class="moves-opt" data-lsmoves="0">∞</div>
+    </div>
+  </div>
+  <div class="levels-grid" id="levelsGrid"></div>
+</div>
+
+<!-- ═══ GAME ═══ -->
+<div id="game" class="screen hidden">
+
+  <!-- P2 palette (top, rotated) -->
+  <div class="palette-panel p2-panel dimmed" id="palette2"></div>
+
+  <!-- P2 HUD -->
+  <div class="hud-strip p2-strip" id="p2strip">
+    <div class="hud-player" style="transform:rotate(180deg)">
+      <div class="hud-dot" id="dot2"></div>
+      <span class="hud-name" id="name2">Player 2</span>
+      <span class="hud-turn-badge" id="badge2">TURN</span>
+      <span class="hud-score" id="score2">0%</span>
+    </div>
+  </div>
+
+  <!-- Shared center info -->
+  <div class="hud-center-strip">
+    <span class="moves-label">Moves left</span>
+    <span class="moves-val" id="movesVal">—</span>
+    <button class="btn btn-ghost btn-icon" id="btnHome">☰</button>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-p1" id="progP1" style="width:0%"></div>
+    <div class="progress-p2" id="progP2" style="width:0%"></div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="canvas-wrap" id="canvasWrap">
+    <canvas id="hexCanvas"></canvas>
+  </div>
+
+  <!-- P1 HUD -->
+  <div class="hud-strip p1-strip" id="p1strip">
+    <div class="hud-player">
+      <div class="hud-dot" id="dot1"></div>
+      <span class="hud-name" id="name1">Player 1</span>
+      <span class="hud-turn-badge" id="badge1">TURN</span>
+      <span class="hud-score" id="score1">0%</span>
+    </div>
+  </div>
+
+  <!-- P1 palette (bottom) -->
+  <div class="palette-panel p1-panel" id="palette1"></div>
+
+</div>
+
+<!-- ═══ TURN OVERLAY ═══ -->
+<div id="turnOverlay">
+  <div class="turn-card" id="turnCard">Player 1's Turn</div>
+</div>
+
+<!-- ═══ MODAL ═══ -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-title" id="mTitle">🏆 Victory!</div>
+    <div class="modal-scores">
+      <div class="modal-score-block">
+        <div class="modal-score-pct" id="mScore1" style="color:#38bdf8">0%</div>
+        <div class="modal-score-name">Player 1</div>
+      </div>
+      <div style="display:flex;align-items:center;font-size:1.5rem;opacity:.3">vs</div>
+      <div class="modal-score-block">
+        <div class="modal-score-pct" id="mScore2" style="color:#f472b6">0%</div>
+        <div class="modal-score-name">Player 2</div>
+      </div>
+    </div>
+    <div class="modal-result" id="mResult">—</div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" id="mRetry">↺ Rematch</button>
+      <button class="btn btn-gold" id="mMenu">☰ Menu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════
+   CONSTANTS
+══════════════════════════════════════ */
+const COLORS = [
+  '#ff2020','#00cc44','#1a8fff','#ff8c00',
+  '#cc00ff','#444444','#ffffff',
+];
+// 7 colors: vivid red, vivid green, vivid blue, vivid orange, vivid purple, black, white
+
+// Player theme colors (for HUD, border, home hex)
+const P1_COLOR = '#38bdf8'; // sky blue
+const P2_COLOR = '#f472b6'; // pink
+
+const LEVELS = [
+  { cols:18, rows:30, numColors:4, maxMoves:50, spawnZone: 0.30 }, // 1 — маленькое, 4 цвета
+  { cols:20, rows:34, numColors:4, maxMoves:50, spawnZone: 0.30 }, // 2
+  { cols:22, rows:38, numColors:5, maxMoves:50, spawnZone: 0.28 }, // 3 — 5 цветов
+  { cols:24, rows:40, numColors:5, maxMoves:50, spawnZone: 0.28 }, // 4
+  { cols:26, rows:44, numColors:6, maxMoves:50, spawnZone: 0.25 }, // 5 — 6 цветов
+  { cols:28, rows:46, numColors:6, maxMoves:50, spawnZone: 0.25 }, // 6
+  { cols:30, rows:50, numColors:7, maxMoves:50, spawnZone: 0.22 }, // 7 — 7 цветов, ближе к центру
+  { cols:32, rows:52, numColors:7, maxMoves:50, spawnZone: 0.20 }, // 8 — сложнее всего
+];
+
+// Apply CSS vars for player colors
+document.documentElement.style.setProperty('--p1c', P1_COLOR);
+document.documentElement.style.setProperty('--p2c', P2_COLOR);
+
+/* ══════════════════════════════════════
+   GAME STATE
+══════════════════════════════════════ */
+let G = {
+  levelIdx: 0,
+  grid: [], cols: 0, rows: 0, numColors: 0,
+  maxMoves: 0, movesLeft: 0,
+  total: 0,
+  currentPlayer: 1,
+  gameOver: false,
+  endless: false,
+  vsBot: false,        // playing against bot
+  botDifficulty: 'medium', // easy / medium / hard
+  lsMode: 'local',    // level select mode: local | bot
+  fromLevelSelect: false, // true only when started from level select screen
+  onlineMoves: 50,     // selected moves limit for online
+  lsMoves: 50,         // moves limit for local/bot level select
+  players: [
+    { id: 1, captured: new Set(), colorIdx: 0, homeR: 0,  homeC: 0  },
+    { id: 2, captured: new Set(), colorIdx: 0, homeR: -1, homeC: -1 },
+  ],
+};
+
+/* ══════════════════════════════════════
+   PROGRESS
+══════════════════════════════════════ */
+function loadProg() {
+  try { return JSON.parse(localStorage.getItem('fm3_prog') || '{"u":[0],"s":{}}'); } catch { return {u:[0],s:{}}; }
+}
+function saveProg(p) { try { localStorage.setItem('fm3_prog', JSON.stringify(p)); } catch {} }
+
+/* ══════════════════════════════════════
+   HEX MATH
+══════════════════════════════════════ */
+let HEX = { size: 18, offX: 0, offY: 0 };
+
+function hexW() { return Math.sqrt(3) * HEX.size; }
+function hexH() { return 2 * HEX.size; }
+
+function hexCenter(col, row) {
+  const x = HEX.offX + col * hexW() + (row % 2 === 0 ? 0 : hexW() / 2);
+  const y = HEX.offY + row * (hexH() * 0.75);
+  return { x, y };
+}
+
+function hexVerts(cx, cy) {
+  const v = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i - 30);
+    v.push([cx + HEX.size * Math.cos(a), cy + HEX.size * Math.sin(a)]);
+  }
+  return v;
+}
+
+function hexNeighbors(col, row) {
+  const even = row % 2 === 0;
+  const dirs = even
+    ? [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[-1,1]]
+    : [[-1,0],[1,0],[0,-1],[0,1],[1,-1],[1,1]];
+  return dirs.map(([dc,dr]) => [col+dc, row+dr])
+             .filter(([c,r]) => c >= 0 && r >= 0 && c < G.cols && r < G.rows);
+}
+
+function pixelToHex(px, py) {
+  let best = null, bd = Infinity;
+  for (let r = 0; r < G.rows; r++) {
+    for (let c = 0; c < G.cols; c++) {
+      const { x, y } = hexCenter(c, r);
+      const d = (px - x) ** 2 + (py - y) ** 2;
+      if (d < bd) { bd = d; best = [c, r]; }
+    }
+  }
+  return best;
+}
+
+/* ══════════════════════════════════════
+   CANVAS
+══════════════════════════════════════ */
+const canvas = document.getElementById('hexCanvas');
+const ctx = canvas.getContext('2d');
+
+function fitCanvas() {
+  const wrap = document.getElementById('canvasWrap');
+  // Reset explicit height so flex can recalculate naturally
+  wrap.style.height = '';
+  wrap.style.minHeight = '';
+  wrap.style.maxHeight = '';
+
+  // Let the browser do one layout pass, then measure
+  const W = wrap.offsetWidth  || window.innerWidth  || 375;
+  const H = wrap.offsetHeight || 200;
+
+  if (W < 10 || H < 20) {
+    requestAnimationFrame(fitCanvas);
+    return;
+  }
+  const pad = 6;
+  // Exact grid dimensions in units of HEX.size=1:
+  // width  = (cols + 0.5) * sqrt(3)
+  // height = (rows * 0.75 + 0.25) * 2
+  const unitW = (G.cols + 0.5) * Math.sqrt(3);
+  const unitH = (G.rows * 0.75 + 0.25) * 2;
+  const sW = (W - pad * 2) / unitW;
+  const sH = (H - pad * 2) / unitH;
+  HEX.size = Math.max(4, Math.floor(Math.min(sW, sH)));
+  const gridW = unitW * HEX.size;
+  const gridH = unitH * HEX.size;
+  HEX.offX = (W - gridW) / 2 + Math.sqrt(3) / 2 * HEX.size;
+  HEX.offY = (H - gridH) / 2 + HEX.size;
+  canvas.width  = W;
+  canvas.height = H;
+}
+
+function drawGrid() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const p1set = G.players[0].captured;
+  const p2set = G.players[1].captured;
+  const p1moved = G.players[0].hasMoved;
+  const p2moved = G.players[1].hasMoved;
+
+  for (let r = 0; r < G.rows; r++) {
+    for (let c = 0; c < G.cols; c++) {
+      const { x, y } = hexCenter(c, r);
+      const ci = G.grid[r][c];
+      const isP1 = p1set.has(`${r},${c}`);
+      const isP2 = p2set.has(`${r},${c}`);
+      // Before first move, home hex shows as neutral (no tint)
+      const isP1Tinted = isP1 && p1moved;
+      const isP2Tinted = isP2 && p2moved;
+      const isHome1 = r === G.players[0].homeR && c === G.players[0].homeC;
+      const isHome2 = r === G.players[1].homeR && c === G.players[1].homeC;
+      drawHex(x, y, COLORS[ci], isP1Tinted, isP2Tinted, isHome1, isHome2);
+    }
+  }
+
+  // ── RIPPLE RINGS — drawn after all hexes so nothing overlaps them ──
+  [
+    { player: G.players[0], hRGBA: 'rgba(56,189,248,' },
+    { player: G.players[1], hRGBA: 'rgba(244,114,182,' },
+  ].forEach(({ player, hRGBA }) => {
+    if (player.hasMoved) return;
+    const { x, y } = hexCenter(player.homeC, player.homeR);
+    const now = Date.now();
+    const rippleSpeed = 1800;
+    for (let ring = 0; ring < 3; ring++) {
+      const phase = ((now - ring * (rippleSpeed / 3)) % rippleSpeed) / rippleSpeed;
+      const maxR  = HEX.size * 5.25; // 1.5x larger than before
+      const minR  = HEX.size * 0.8;
+      const ringR = minR + (maxR - minR) * phase;
+      const alpha = (1 - phase) * 0.75;
+      ctx.beginPath();
+      ctx.arc(x, y, ringR, 0, Math.PI * 2);
+      ctx.strokeStyle = hRGBA + `${alpha})`;
+      ctx.lineWidth = 3 * (1 - phase * 0.6);
+      ctx.stroke();
+    }
+  });
+}
+
+// Mix hex color with player tint
+function mixColor(hex, playerRGB, amount) {
+  // hex = '#rrggbb', playerRGB = [r,g,b], amount 0..1
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  const mr = Math.round(r*(1-amount) + playerRGB[0]*amount);
+  const mg = Math.round(g*(1-amount) + playerRGB[1]*amount);
+  const mb = Math.round(b*(1-amount) + playerRGB[2]*amount);
+  return `rgb(${mr},${mg},${mb})`;
+}
+const P1_RGB = [56,189,248];
+const P2_RGB = [244,114,182];
+
+function drawHex(cx, cy, color, isP1, isP2, isHome1, isHome2) {
+  const verts = hexVerts(cx, cy);
+
+  // ── PATH ──
+  function path() {
+    ctx.beginPath();
+    ctx.moveTo(verts[0][0], verts[0][1]);
+    for (let i = 1; i < 6; i++) ctx.lineTo(verts[i][0], verts[i][1]);
+    ctx.closePath();
+  }
+
+  path();
+
+  // Fill: captured cells blend their current color with the player's tint color
+  if (isP1) {
+    ctx.fillStyle = mixColor(color, P1_RGB, 0.38);
+  } else if (isP2) {
+    ctx.fillStyle = mixColor(color, P2_RGB, 0.38);
+  } else {
+    // Uncaptured: slightly darkened so captured stand out
+    ctx.fillStyle = color;
+    ctx.fill();
+    // dark vignette on uncaptured
+    path();
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.fill();
+    // thin dark border
+    path();
+    ctx.strokeStyle = 'rgba(0,0,0,.35)';
+    ctx.lineWidth = .7;
+    ctx.stroke();
+    // still draw home marker if needed
+    if (!isHome1 && !isHome2) return;
+  }
+  ctx.fill();
+
+  // Shine overlay on captured
+  path();
+  const grad = ctx.createRadialGradient(cx - HEX.size*.15, cy - HEX.size*.25, 0, cx, cy, HEX.size*.9);
+  grad.addColorStop(0, 'rgba(255,255,255,.22)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,.04)');
+  grad.addColorStop(1, 'rgba(0,0,0,.1)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // ── BORDER: thick player-colored stroke ──
+  path();
+  ctx.strokeStyle = isP1 ? 'rgba(56,189,248,.9)' : 'rgba(244,114,182,.9)';
+  ctx.lineWidth = HEX.size > 8 ? 2.2 : 1.2;
+  ctx.stroke();
+
+  // ── HOME HEX — always visible: pulsing ring + colored center dot ──
+  if (isHome1 || isHome2) {
+    const t = Date.now() / 550;
+    const notMoved = (isHome1 && !G.players[0].hasMoved) || (isHome2 && !G.players[1].hasMoved);
+    const pulse = notMoved
+      ? .5 + .5 * Math.sin(Date.now() / 220)
+      : .5 + .5 * Math.sin(t);
+    const hColor = isHome1 ? P1_COLOR : P2_COLOR;
+    const hRGBA  = isHome1 ? `rgba(56,189,248,` : `rgba(244,114,182,`;
+
+    // ── AURA — soft radial glow around the hex (only before first move) ──
+    if (notMoved) {
+      const auraSize = HEX.size * (2.2 + .6 * pulse);
+      const aura = ctx.createRadialGradient(cx, cy, HEX.size * .3, cx, cy, auraSize);
+      aura.addColorStop(0, hRGBA + `${.35 * pulse})`);
+      aura.addColorStop(0.5, hRGBA + `${.18 * pulse})`);
+      aura.addColorStop(1, hRGBA + `0)`);
+      ctx.beginPath();
+      ctx.arc(cx, cy, auraSize, 0, Math.PI * 2);
+      ctx.fillStyle = aura;
+      ctx.fill();
+    }
+
+    // Outer ring
+    ctx.save();
+    ctx.shadowColor = hColor;
+    ctx.shadowBlur = notMoved ? 18 + 14 * pulse : 10 + 8 * pulse;
+    path();
+    ctx.strokeStyle = hRGBA + `${.7 + .3 * pulse})`;
+    ctx.lineWidth = notMoved ? 4 : 2.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Center dot
+    const dotR = notMoved
+      ? Math.max(4, HEX.size * .38)
+      : Math.max(3, HEX.size * .26);
+    ctx.beginPath();
+    ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+    ctx.fillStyle = hRGBA + `${.85 + .15 * pulse})`;
+    ctx.shadowColor = hColor;
+    ctx.shadowBlur = notMoved ? 14 : 8;
+    ctx.fill();
+
+    // White inner highlight
+    ctx.beginPath();
+    ctx.arc(cx - dotR * .25, cy - dotR * .25, dotR * .35, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,.7)`;
+    ctx.shadowBlur = 0;
+    ctx.fill();
+  }
+}
+
+// Animate home hex pulse
+let animFrame;
+function startRenderLoop() {
+  cancelAnimationFrame(animFrame);
+  function loop() { drawGrid(); animFrame = requestAnimationFrame(loop); }
+  loop();
+}
+
+/* ══════════════════════════════════════
+   INIT LEVEL
+══════════════════════════════════════ */
+function buildGrid() {
+  const cfg = LEVELS[G.levelIdx];
+  // Level select: use level config. All other modes: fixed large grid + 7 colors
+  G.cols      = G.fromLevelSelect ? cfg.cols      : 28;
+  G.rows      = G.fromLevelSelect ? cfg.rows      : 46;
+  G.numColors = G.fromLevelSelect ? cfg.numColors : 7;
+  G.maxMoves  = cfg.maxMoves;
+  G.movesLeft = cfg.maxMoves;
+  G.total     = G.cols * G.rows;
+  G.gameOver  = false;
+  G.currentPlayer = 1;
+
+  // Random grid
+  G.grid = [];
+  for (let r = 0; r < G.rows; r++) {
+    G.grid[r] = [];
+    for (let c = 0; c < G.cols; c++) {
+      G.grid[r][c] = Math.floor(Math.random() * G.numColors);
+    }
+  }
+
+  // ── Random spawns ──
+  const spawnZone = G.fromLevelSelect ? (cfg.spawnZone || 0.25) : 0.25;
+  const padC = Math.max(2, Math.floor(G.cols * 0.08));
+  const padR = Math.max(2, Math.floor(G.rows * 0.08));
+  // P1 spawns in bottom zone, P2 in top zone
+  // Higher levels → zone closer to center (smaller spawnZone offset from 0.5)
+  const p1rowLo = Math.floor(G.rows * (0.5 - spawnZone * 0.3));
+  const p1rowHi = Math.floor(G.rows * (0.5 + spawnZone));
+  const p2rowLo = Math.floor(G.rows * (0.5 - spawnZone));
+  const p2rowHi = Math.floor(G.rows * (0.5 + spawnZone * 0.3));
+  const minDist = Math.floor(Math.min(G.cols, G.rows) * 0.2);
+
+  function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
+  function hexDist(r1, c1, r2, c2) { return Math.sqrt((r1-r2)**2 + (c1-c2)**2); }
+
+  // P1 spawns randomly in bottom zone, P2 gets mirrored position
+  let p1r, p1c, attempts = 0;
+  do {
+    p1r = randInt(p1rowLo, p1rowHi);
+    p1c = randInt(padC, G.cols - 1 - padC);
+    attempts++;
+  } while (attempts < 200);
+
+  // Mirror P2 exactly — guaranteed symmetric conditions
+  const p2r = G.rows - 1 - p1r;
+  const p2c = G.cols - 1 - p1c;
+
+  // Ensure different start colors
+  if (G.grid[p2r][p2c] === G.grid[p1r][p1c]) {
+    G.grid[p2r][p2c] = (G.grid[p1r][p1c] + 1) % G.numColors;
+  }
+
+  G.players[0] = { id: 1, captured: new Set(), colorIdx: -1, homeR: p1r, homeC: p1c, hasMoved: false };
+  G.players[1] = { id: 2, captured: new Set(), colorIdx: -1, homeR: p2r, homeC: p2c, hasMoved: false };
+
+  // Just mark the single home hex as captured — no color, no flood
+  G.players[0].captured.add(`${p1r},${p1c}`);
+  G.players[1].captured.add(`${p2r},${p2c}`);
+}
+
+function startLevelVsBot(idx) {
+  G.vsBot = true;
+  G.fromLevelSelect = true;
+  // Read difficulty from DOM at start time
+  const activeDiffEl = document.querySelector('.diff-opt.active');
+  G.botDifficulty = activeDiffEl ? activeDiffEl.dataset.diff : 'medium';
+  console.log('Bot difficulty:', G.botDifficulty);
+  const endless = G.lsMoves === 0;
+  startLevel(idx, endless);
+  if (!endless) G.maxMoves = G.movesLeft = G.lsMoves;
+  document.getElementById('name2').textContent = '🤖 Бот';
+  updateHUD();
+}
+
+function startLevel(idx, endless = false) {
+  G.vsBot = (G.vsBot && endless === false) ? G.vsBot : false;
+  G.levelIdx = idx;
+  G.endless = endless;
+  buildGrid();
+  showScreen('game');
+  // Delay fitCanvas one frame so iOS finishes layout before measuring
+  requestAnimationFrame(() => {
+    fitCanvas();
+    renderPalettes();
+    updateHUD();
+    applyTurnUI(false);
+    startRenderLoop();
+  });
+  document.getElementById('levelNum') && (document.getElementById('levelNum').textContent = idx + 1);
+}
+
+/* ══════════════════════════════════════
+   BFS FLOOD
+══════════════════════════════════════ */
+function bfsCapture(playerIdx, startC, startR, targetColor, init) {
+  const player = G.players[playerIdx];
+  const otherSet = G.players[1 - playerIdx].captured;
+  const queue = [];
+
+  if (init) {
+    queue.push([startC, startR]);
+  } else {
+    player.captured.forEach(key => {
+      const [r, c] = key.split(',').map(Number);
+      hexNeighbors(c, r).forEach(([nc, nr]) => {
+        const k = `${nr},${nc}`;
+        if (!player.captured.has(k) && !otherSet.has(k) && G.grid[nr][nc] === targetColor) {
+          queue.push([nc, nr]);
+        }
+      });
+    });
+  }
+
+  const visited = new Set(queue.map(([c, r]) => `${r},${c}`));
+  let head = 0;
+  while (head < queue.length) {
+    const [c, r] = queue[head++];
+    const key = `${r},${c}`;
+    if (otherSet.has(key)) continue; // don't steal opponent's cells
+    player.captured.add(key);
+    hexNeighbors(c, r).forEach(([nc, nr]) => {
+      const k = `${nr},${nc}`;
+      if (!visited.has(k) && !player.captured.has(k) && !otherSet.has(k) && G.grid[nr][nc] === targetColor) {
+        visited.add(k);
+        queue.push([nc, nr]);
+      }
+    });
+  }
+}
+
+/* ══════════════════════════════════════
+   APPLY MOVE
+══════════════════════════════════════ */
+function applyMove(colorIdx) {
+  if (G.gameOver) return;
+  const pi = G.currentPlayer - 1;
+  const player = G.players[pi];
+  const otherColor = G.players[1 - pi].colorIdx;
+
+  if (colorIdx === player.colorIdx && player.hasMoved) return;
+  if (colorIdx === otherColor && otherColor !== -1) return; // can't pick opponent's color
+
+  // Recolor all captured cells
+  player.captured.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    G.grid[r][c] = colorIdx;
+  });
+  player.colorIdx = colorIdx;
+  player.hasMoved = true;
+
+  // First move: flood init from home hex; subsequent: expand from borders
+  bfsCapture(pi, player.homeC, player.homeR, colorIdx, false);
+
+  G.movesLeft--;
+  updateHUD();
+  renderPalettes();
+
+  // Check end — board full, or out of moves (only in limited mode)
+  const total = G.players[0].captured.size + G.players[1].captured.size;
+  if (total >= G.total || (!G.endless && G.movesLeft <= 0)) {
+    G.gameOver = true;
+    setTimeout(showEndModal, 400);
+    return;
+  }
+
+  // Early finish — check if loser mathematically cannot catch up
+  if (checkMathematicallyOver()) {
+    G.gameOver = true;
+    setTimeout(showEndModal, 600);
+    return;
+  }
+
+  // Switch turn
+  G.currentPlayer = G.currentPlayer === 1 ? 2 : 1;
+  applyTurnUI(true);
+
+  // Bot move
+  if (G.vsBot && G.currentPlayer === 2 && !G.gameOver) {
+    setTimeout(doBotMove, 700);
+  }
+}
+
+/* ══════════════════════════════════════
+   TURN UI
+══════════════════════════════════════ */
+function applyTurnUI(withFlash) {
+  const is1 = G.currentPlayer === 1;
+
+  // Palette active/dim
+  document.getElementById('palette1').classList.toggle('dimmed', !is1);
+  document.getElementById('palette2').classList.toggle('dimmed', is1);
+
+  // Badges
+  document.getElementById('badge1').classList.toggle('active', is1);
+  document.getElementById('badge2').classList.toggle('active', !is1);
+
+  // Background gradient — active player's half glows their color
+  const wrap = document.getElementById('canvasWrap');
+  if (is1) {
+    // P1 is bottom — gradient from bottom
+    wrap.style.background = `radial-gradient(ellipse 90% 45% at 50% 100%, rgba(56,189,248,.18) 0%, transparent 70%)`;
+  } else {
+    // P2 is top — gradient from top
+    wrap.style.background = `radial-gradient(ellipse 90% 45% at 50% 0%, rgba(244,114,182,.18) 0%, transparent 70%)`;
+  }
+
+  if (withFlash) {
+    const overlay = document.getElementById('turnOverlay');
+    const card    = document.getElementById('turnCard');
+    const pColor  = is1 ? P1_COLOR : P2_COLOR;
+    card.textContent = is1 ? "Player 1's Turn" : "Player 2's Turn";
+    card.style.background = `rgba(0,0,0,.75)`;
+    card.style.borderColor = pColor;
+    card.style.color = pColor;
+    overlay.classList.add('show');
+    setTimeout(() => overlay.classList.remove('show'), 900);
+  }
+}
+
+/* ══════════════════════════════════════
+   HUD
+══════════════════════════════════════ */
+function updateHUD() {
+  const total = G.total || (G.cols * G.rows) || 1;
+  const s1 = Math.round(G.players[0].captured.size / total * 100);
+  const s2 = Math.round(G.players[1].captured.size / total * 100);
+  document.getElementById('score1').textContent = s1 + '%';
+  document.getElementById('score2').textContent = s2 + '%';
+  document.getElementById('movesVal').textContent = G.endless ? '∞' : G.movesLeft;
+  document.getElementById('movesVal').className = 'moves-val' + (!G.endless && G.movesLeft <= 5 ? ' low' : '');
+  document.getElementById('progP1').style.width = s1 + '%';
+  document.getElementById('progP2').style.width = s2 + '%';
+  document.getElementById('dot1').style.background = P1_COLOR;
+  document.getElementById('dot2').style.background = P2_COLOR;
+}
+
+/* ══════════════════════════════════════
+   PALETTES
+══════════════════════════════════════ */
+function renderPalettes() {
+  ['palette1','palette2'].forEach((id, pi) => {
+    const panel = document.getElementById(id);
+    panel.innerHTML = '';
+    const player = G.players[pi];
+    const other  = G.players[1 - pi];
+    for (let i = 0; i < G.numColors; i++) {
+      const btn = document.createElement('div');
+      btn.className = 'color-btn';
+      btn.style.background = COLORS[i];
+      if (i === player.colorIdx && player.hasMoved) {
+        btn.classList.add('cur-color');
+      } else if (i === other.colorIdx) {
+        btn.classList.add('enemy-color');
+      } else {
+      btn.dataset.idx = i;
+      btn.classList.add('selectable');
+        btn.addEventListener('click', () => {
+          if (G.gameOver) return;
+          if (G.online) {
+            if (G.currentPlayer - 1 === pi && pi === onlinePlayerIdx) applyMoveOnline(i);
+          } else {
+            if (G.currentPlayer - 1 === pi) applyMove(i);
+          }
+        });
+      }
+      panel.appendChild(btn);
+    }
+  });
+}
+
+/* ══════════════════════════════════════
+   EARLY FINISH CHECK
+   BFS from each player's border to count reachable neutral cells.
+   If even capturing ALL reachable cells can't overcome the lead → game over.
+══════════════════════════════════════ */
+function reachableNeutral(playerIdx) {
+  const player   = G.players[playerIdx];
+  const otherSet = G.players[1 - playerIdx].captured;
+  const capSet   = player.captured;
+  const visited  = new Set();
+  const queue    = [];
+
+  // Seed BFS from all border cells adjacent to neutral territory
+  capSet.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    hexNeighbors(c, r).forEach(([nc, nr]) => {
+      const k = `${nr},${nc}`;
+      if (!capSet.has(k) && !otherSet.has(k) && !visited.has(k)) {
+        visited.add(k);
+        queue.push(k);
+      }
+    });
+  });
+
+  // BFS through neutral cells only
+  let head = 0;
+  while (head < queue.length) {
+    const key = queue[head++];
+    const [r, c] = key.split(',').map(Number);
+    hexNeighbors(c, r).forEach(([nc, nr]) => {
+      const k = `${nr},${nc}`;
+      if (!capSet.has(k) && !otherSet.has(k) && !visited.has(k)) {
+        visited.add(k);
+        queue.push(k);
+      }
+    });
+  }
+
+  return visited.size;
+}
+
+function checkMathematicallyOver() {
+  if (!G.players[0].hasMoved || !G.players[1].hasMoved) return false;
+
+  const s0 = G.players[0].captured.size;
+  const s1 = G.players[1].captured.size;
+  const neutral = G.total - s0 - s1;
+  if (neutral <= 0) return false;
+
+  // Only run expensive BFS if there's a meaningful gap
+  if (Math.abs(s0 - s1) < 10) return false;
+
+  if (s0 < s1) {
+    // P1 is losing — check if reachable neutral cells can save them
+    const reach = reachableNeutral(0);
+    if (s0 + reach < s1) return true;
+  } else {
+    // P2 is losing
+    const reach = reachableNeutral(1);
+    if (s1 + reach < s0) return true;
+  }
+
+  return false;
+}
+
+/* ══════════════════════════════════════
+   END MODAL
+══════════════════════════════════════ */
+function showEndModal() {
+  cancelAnimationFrame(animFrame);
+  drawGrid(); // final frame
+
+  const total = G.total || (G.cols * G.rows) || 1;
+  const s1 = Math.round(G.players[0].captured.size / total * 100);
+  const s2 = Math.round(G.players[1].captured.size / total * 100);
+
+  let title, result;
+  if (s1 > s2) {
+    title = '🏆 Player 1 Wins!';
+    result = `Player 1 captured ${s1}% vs ${s2}%`;
+  } else if (s2 > s1) {
+    title = '🏆 Player 2 Wins!';
+    result = `Player 2 captured ${s2}% vs ${s1}%`;
+  } else {
+    title = '🤝 It\'s a Draw!';
+    result = `Both players captured ${s1}%`;
+  }
+
+  document.getElementById('mTitle').textContent = title;
+  document.getElementById('mScore1').textContent = s1 + '%';
+  document.getElementById('mScore2').textContent = s2 + '%';
+  document.getElementById('mResult').textContent = result;
+  document.getElementById('modalOverlay').classList.remove('hidden');
+}
+
+document.getElementById('mRetry').onclick = () => {
+  document.getElementById('modalOverlay').classList.add('hidden');
+  startLevel(G.levelIdx, G.endless);
+};
+document.getElementById('mMenu').onclick = () => {
+  document.getElementById('modalOverlay').classList.add('hidden');
+  cancelAnimationFrame(animFrame);
+  G.fromLevelSelect = false;
+  // Reset mirror if was online P2
+  document.getElementById('hexCanvas').classList.remove('mirrored');
+  const pal1 = document.getElementById('palette1');
+  const pal2 = document.getElementById('palette2');
+  pal1.className = 'palette-panel p1-panel';
+  pal1.style.cssText = '';
+  pal2.className = 'palette-panel p2-panel dimmed';
+  pal2.style.cssText = '';
+  if (socket) { socket.disconnect(); socket = null; }
+  G.online = false;
+  showScreen('menu');
+};
+
+/* ══════════════════════════════════════
+   CANVAS INPUT — disabled, palette only
+══════════════════════════════════════ */
+// Color selection is palette-only; canvas taps do nothing.
+
+/* ══════════════════════════════════════
+   SCREENS
+══════════════════════════════════════ */
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => {
+    s.classList.add('hidden');
+  });
+  // Small rAF delay lets iOS process the visibility:hidden before showing new screen
+  requestAnimationFrame(() => {
+    document.getElementById(name).classList.remove('hidden');
+  });
+}
+
+/* ══════════════════════════════════════
+   LEVEL SELECT
+══════════════════════════════════════ */
+function renderLevelSelect() {
+  const prog = loadProg();
+  const grid = document.getElementById('levelsGrid');
+  grid.innerHTML = '';
+  LEVELS.forEach((_, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'lbtn';
+    const unlocked = prog.u.includes(i);
+    const stars = prog.s[i] || 0;
+    if (!unlocked) {
+      btn.classList.add('locked');
+      btn.innerHTML = '🔒';
+    } else {
+      if (stars > 0) btn.classList.add('done');
+      btn.innerHTML = `<span>${i+1}</span><span style="font-size:.55rem;opacity:.6;letter-spacing:.5px">${['4цв','4цв','5цв','5цв','6цв','6цв','7цв','7цв'][i]}</span>`;
+      btn.addEventListener('click', () => {
+        if (G.lsMode === 'bot') {
+          startLevelVsBot(i);
+        } else {
+          G.fromLevelSelect = true;
+          const endless = G.lsMoves === 0;
+          startLevel(i, endless);
+          if (!endless) { G.maxMoves = G.movesLeft = G.lsMoves; updateHUD(); }
+        }
+      });
+    }
+    grid.appendChild(btn);
+  });
+}
+
+/* ══════════════════════════════════════
+   BOT AI
+══════════════════════════════════════ */
+function doBotMove() {
+  if (!G.vsBot || G.currentPlayer !== 2 || G.gameOver) return;
+
+  // Use difficulty set at game start
+  const difficulty = G.botDifficulty || 'medium';
+  console.log('Bot move with difficulty:', difficulty);
+
+  const pi = 1; // bot is player 2
+  const player = G.players[pi];
+  const other  = G.players[0];
+
+  // Build candidate colors (not current, not enemy)
+  const candidates = [];
+  for (let i = 0; i < G.numColors; i++) {
+    if (i === player.colorIdx && player.hasMoved) continue;
+    if (i === other.colorIdx && other.colorIdx !== -1) continue;
+    candidates.push(i);
+  }
+  if (candidates.length === 0) return;
+
+  let chosen;
+
+  if (difficulty === 'easy') {
+    chosen = candidates[Math.floor(Math.random() * candidates.length)];
+  } else if (difficulty === 'medium') {
+    chosen = bestColorByGain(pi, candidates, 1);
+  } else {
+    // Hard: 2 moves ahead
+    let bestScore = -Infinity;
+    for (const c of candidates) {
+      const gain = simulateGain(pi, c);
+      const oppGain = bestOpponentGain(pi, c);
+      const score = gain * 2 - oppGain;
+      if (score > bestScore) { bestScore = score; chosen = c; }
+    }
+  }
+
+  applyMove(chosen);
+}
+
+function simulateGain(pi, colorIdx) {
+  // Count how many NEW cells would be captured
+  const player  = G.players[pi];
+  const other   = G.players[1-pi];
+  const capSet  = new Set(player.captured);
+  const othSet  = new Set(other.captured);
+  let count = 0;
+  const queue = [];
+  capSet.forEach(key => {
+    const [r,c] = key.split(',').map(Number);
+    hexNeighbors(c,r).forEach(([nc,nr]) => {
+      const k=`${nr},${nc}`;
+      if (!capSet.has(k) && !othSet.has(k) && G.grid[nr][nc] === colorIdx) queue.push(k);
+    });
+  });
+  const vis = new Set(queue);
+  let head = 0;
+  while (head < queue.length) {
+    const key = queue[head++];
+    if (othSet.has(key)) continue;
+    count++;
+    const [r,c] = key.split(',').map(Number);
+    hexNeighbors(c,r).forEach(([nc,nr]) => {
+      const k=`${nr},${nc}`;
+      if (!vis.has(k) && !capSet.has(k) && !othSet.has(k) && G.grid[nr][nc] === colorIdx) { vis.add(k); queue.push(k); }
+    });
+  }
+  return count;
+}
+
+function bestColorByGain(pi, candidates) {
+  let best = -1, bestC = candidates[0];
+  for (const c of candidates) {
+    const g = simulateGain(pi, c);
+    if (g > best) { best = g; bestC = c; }
+  }
+  return bestC;
+}
+
+function bestOpponentGain(pi, afterColor) {
+  // Simulate bot playing afterColor, then find best opponent response
+  const oppPi = 1 - pi;
+  const opp   = G.players[oppPi];
+  const oppCands = [];
+  for (let i = 0; i < G.numColors; i++) {
+    if (i === opp.colorIdx && opp.hasMoved) continue;
+    if (i === afterColor) continue; // after bot moves, this becomes bot color
+    oppCands.push(i);
+  }
+  if (oppCands.length === 0) return 0;
+  let best = 0;
+  for (const c of oppCands) best = Math.max(best, simulateGain(oppPi, c));
+  return best;
+}
+
+/* ══════════════════════════════════════
+   LEVEL SELECT MODE
+══════════════════════════════════════ */
+function initLevelSelectUI() {
+  // Mode toggle
+  document.getElementById('lsModeLocal').addEventListener('click', () => {
+    G.lsMode = 'local';
+    document.getElementById('lsModeLocal').style.borderColor = 'rgba(56,189,248,.5)';
+    document.getElementById('lsModeLocal').style.color = '#38bdf8';
+    document.getElementById('lsModeBot').style.borderColor = 'rgba(255,255,255,.18)';
+    document.getElementById('lsModeBot').style.color = '';
+    document.getElementById('diffSelector').style.display = 'none';
+    renderLevelSelect();
+  });
+  document.getElementById('lsModeBot').addEventListener('click', () => {
+    G.lsMode = 'bot';
+    document.getElementById('lsModeBot').style.borderColor = 'rgba(244,114,182,.5)';
+    document.getElementById('lsModeBot').style.color = '#f472b6';
+    document.getElementById('lsModeLocal').style.borderColor = 'rgba(255,255,255,.18)';
+    document.getElementById('lsModeLocal').style.color = '';
+    document.getElementById('diffSelector').style.display = 'flex';
+    renderLevelSelect();
+  });
+
+  // Difficulty selector — sync initial value from active button
+  const activeDiff = document.querySelector('.diff-opt.active');
+  if (activeDiff) G.botDifficulty = activeDiff.dataset.diff;
+
+  document.querySelectorAll('.diff-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('.diff-opt').forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+      G.botDifficulty = opt.dataset.diff;
+    });
+  });
+
+  // Level select moves selector
+  document.querySelectorAll('[data-lsmoves]').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('[data-lsmoves]').forEach(o => o.classList.remove('active'));
+      opt.classList.add('active');
+      G.lsMoves = parseInt(opt.dataset.lsmoves) || 0;
+    });
+  });
+}
+
+/* ══════════════════════════════════════
+   NAV
+══════════════════════════════════════ */
+function bindBtn(id, fn) {
+  const el = document.getElementById(id);
+  let touched = false;
+  el.addEventListener('touchend', e => {
+    e.preventDefault();
+    touched = true;
+    fn();
+  }, { passive: false });
+  el.addEventListener('click', () => {
+    if (!touched) fn();
+    touched = false;
+  });
+}
+
+bindBtn('btnPlay2p',     () => { G.vsBot = false; G.lsMode = null; startLevel(0, false); G.maxMoves = G.movesLeft = G.lsMoves || 50; updateHUD(); });
+bindBtn('btnPlayEndless',() => { G.vsBot = false; G.lsMode = null; startLevel(0, true); });
+bindBtn('btnLevels',     () => { initLevelSelectUI(); renderLevelSelect(); showScreen('levelSelect'); });
+bindBtn('lsBack',        () => { G.fromLevelSelect = false; showScreen('menu'); });
+bindBtn('btnHome',       () => { cancelAnimationFrame(animFrame); G.fromLevelSelect = false; showScreen('menu'); });
+
+window.addEventListener('resize', () => {
+  if (!document.getElementById('game').classList.contains('hidden')) {
+    requestAnimationFrame(fitCanvas);
+  }
+});
+// iOS: also listen to visualViewport changes (address bar show/hide)
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    if (!document.getElementById('game').classList.contains('hidden')) {
+      requestAnimationFrame(fitCanvas);
+    }
+  });
+}
+
+// ── TELEGRAM MINI APP INIT ──
+try {
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    tg.disableVerticalSwipes();
+    document.body.style.background = '#12121f';
+    tg.BackButton.hide();
+
+    // Set body height to Telegram's viewport height
+    const setTgHeight = () => {
+      const h = tg.viewportStableHeight || tg.viewportHeight || window.innerHeight;
+      document.documentElement.style.height = h + 'px';
+      document.body.style.height = h + 'px';
+    };
+    setTgHeight();
+    tg.onEvent('viewportChanged', setTgHeight);
+  } else {
+    // Non-Telegram: use window height
+    document.documentElement.style.height = window.innerHeight + 'px';
+    document.body.style.height = window.innerHeight + 'px';
+    window.addEventListener('resize', () => {
+      document.documentElement.style.height = window.innerHeight + 'px';
+      document.body.style.height = window.innerHeight + 'px';
+    });
+  }
+} catch(e) {}
+
+
+/* ══════════════════════════════════════
+   ONLINE MULTIPLAYER
+══════════════════════════════════════ */
+// Change this to your Railway/Render server URL after deploy
+const SERVER_URL = 'https://fillmore-production-55d6.up.railway.app';
+
+let socket = null;
+let onlinePlayerIdx = 0; // which player am I (0 or 1)
+
+function connectSocket() {
+  if (socket && socket.connected) return;
+  socket = io(SERVER_URL, { transports: ['websocket'], reconnectionAttempts: 3 });
+
+  socket.on('connect', () => {
+    console.log('connected to server');
+  });
+
+  socket.on('connect_error', () => {
+    setStatus('createStatus', 'Не удалось подключиться к серверу', true);
+    setStatus('joinStatus',   'Не удалось подключиться к серверу', true);
+  });
+
+  socket.on('room_created', ({ code }) => {
+    document.getElementById('roomCodeDisplay').textContent = code;
+    document.getElementById('roomCodeDisplay').classList.remove('hidden');
+    setStatus('createStatus', 'Ожидаем второго игрока...');
+  });
+
+  socket.on('game_start', ({ state }) => {
+    loadOnlineState(state);
+    showScreen('game');
+  });
+
+  socket.on('state_update', ({ state }) => {
+    loadOnlineState(state);
+  });
+
+  socket.on('rematch_requested', () => {
+    setStatus('createStatus', 'Соперник хочет реванш!');
+  });
+
+  socket.on('opponent_left', () => {
+    alert('Соперник покинул игру');
+    G.fromLevelSelect = false;
+    showScreen('menu');
+  });
+
+  socket.on('error', ({ msg }) => {
+    setStatus('joinStatus', msg, true);
+  });
+}
+
+function setStatus(id, msg, isErr = false) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status-msg' + (isErr ? ' err' : '');
+}
+
+function loadOnlineState(serverState) {
+  // Convert arrays back to Sets for client
+  G.levelIdx      = serverState.levelIdx;
+  G.cols          = serverState.cols;
+  G.rows          = serverState.rows;
+  G.numColors     = serverState.numColors;
+  G.maxMoves      = serverState.maxMoves;
+  G.movesLeft     = serverState.movesLeft;
+  G.endless       = serverState.endless;
+  G.currentPlayer = serverState.currentPlayer;
+  G.gameOver      = serverState.gameOver;
+  G.grid          = serverState.grid;
+  G.total         = serverState.cols * serverState.rows;
+  G.players[0] = {
+    ...serverState.players[0],
+    captured: new Set(serverState.players[0].captured),
+  };
+  G.players[1] = {
+    ...serverState.players[1],
+    captured: new Set(serverState.players[1].captured),
+  };
+  G.online = true;
+
+  // Mirror canvas for P2 so their base is at the bottom
+  const cvs = document.getElementById('hexCanvas');
+  if (onlinePlayerIdx === 1) {
+    cvs.classList.add('mirrored');
+    // Move P2 palette to bottom, P1 palette to top
+    const gameEl   = document.getElementById('game');
+    const pal1     = document.getElementById('palette1');
+    const pal2     = document.getElementById('palette2');
+    const p1strip  = document.getElementById('p1strip');
+    const p2strip  = document.getElementById('p2strip');
+    // Swap palette styles so P2 is bottom (normal) and P1 is top (rotated)
+    pal2.classList.remove('p2-panel');
+    pal2.classList.add('p1-panel');
+    pal2.style.transform = '';
+    pal2.style.borderTop = '2px solid var(--p2c,#f472b6)';
+    pal2.style.borderBottom = '';
+    pal1.classList.remove('p1-panel');
+    pal1.classList.add('p2-panel');
+    pal1.style.transform = 'rotate(180deg)';
+    pal1.style.borderBottom = '2px solid var(--p1c,#38bdf8)';
+    pal1.style.borderTop = '';
+    // Move pal2 to bottom, pal1 to top in DOM
+    gameEl.appendChild(pal2);
+    gameEl.insertBefore(pal1, gameEl.firstChild);
+  } else {
+    cvs.classList.remove('mirrored');
+    // Restore normal order for P1
+    const pal1 = document.getElementById('palette1');
+    const pal2 = document.getElementById('palette2');
+    pal1.className = 'palette-panel p1-panel';
+    pal1.style.cssText = '';
+    pal2.className = 'palette-panel p2-panel dimmed';
+    pal2.style.cssText = '';
+  }
+
+  fitCanvas();
+  renderPalettes();
+  updateHUD();
+  applyTurnUI(!serverState.gameOver);
+  if (!animFrame) startRenderLoop();
+
+  if (serverState.gameOver) {
+    setTimeout(showEndModal, 400);
+  }
+}
+
+// Override applyMove for online mode
+const _applyMoveLocal = applyMove;
+function applyMoveOnline(colorIdx) {
+  if (!G.online || !socket) return;
+  // Only send if it's my turn
+  if (G.currentPlayer - 1 !== onlinePlayerIdx) return;
+  socket.emit('move', { colorIdx });
+}
+
+bindBtn('btnOnline', () => {
+  document.getElementById('roomCodeDisplay').classList.add('hidden');
+  document.getElementById('codeInput').value = '';
+  setStatus('createStatus', '');
+  setStatus('joinStatus', '');
+  // Don't auto-connect — wait for user to press Create/Join
+  showScreen('online');
+});
+
+// Moves selector for online
+document.querySelectorAll('.moves-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.moves-opt').forEach(o => o.classList.remove('active'));
+    opt.classList.add('active');
+    G.onlineMoves = parseInt(opt.dataset.moves) || 0;
+  });
+});
+
+bindBtn('onlineBack', () => {
+  G.online = false;
+  // Reset canvas mirror and palette positions
+  document.getElementById('hexCanvas').classList.remove('mirrored');
+  const pal1 = document.getElementById('palette1');
+  const pal2 = document.getElementById('palette2');
+  pal1.className = 'palette-panel p1-panel';
+  pal1.style.cssText = '';
+  pal2.className = 'palette-panel p2-panel dimmed';
+  pal2.style.cssText = '';
+  if (socket) { socket.disconnect(); socket = null; }
+  showScreen('menu');
+});
+
+bindBtn('btnCreateRoom', () => {
+  onlinePlayerIdx = 0;
+  setStatus('createStatus', 'Подключаемся...');
+  connectSocket();
+  const tryCreate = () => {
+    if (socket && socket.connected) {
+      socket.emit('create_room', { levelIdx: 0, endless: G.onlineMoves === 0, maxMoves: G.onlineMoves });
+      setStatus('createStatus', 'Создаём комнату...');
+    } else {
+      setStatus('createStatus', 'Нет соединения с сервером', true);
+    }
+  };
+  if (socket && socket.connected) tryCreate();
+  else setTimeout(tryCreate, 1200);
+});
+
+bindBtn('btnJoinRoom', () => {
+  const code = document.getElementById('codeInput').value.toUpperCase().trim();
+  if (code.length !== 4) { setStatus('joinStatus', 'Введи 4-значный код', true); return; }
+  onlinePlayerIdx = 1;
+  setStatus('joinStatus', 'Подключаемся...');
+  connectSocket();
+  const tryJoin = () => {
+    if (socket && socket.connected) {
+      socket.emit('join_room', { code });
+    } else {
+      setStatus('joinStatus', 'Нет соединения с сервером', true);
+    }
+  };
+  if (socket && socket.connected) tryJoin();
+  else setTimeout(tryJoin, 1200);
+});
+
+// Online palette patch is handled inside renderPalettes via G.online flag
+
+// Patch rematch for online
+const _mRetry = document.getElementById('mRetry');
+_mRetry.addEventListener('click', () => {
+  if (G.online && socket) {
+    socket.emit('rematch');
+    _mRetry.textContent = 'Ожидаем...';
+    _mRetry.disabled = true;
+  }
+}, true);
+
+showScreen('menu');
+// Sync difficulty and moves selectors on load
+initLevelSelectUI();
+
+// ── PWA SERVICE WORKER ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
